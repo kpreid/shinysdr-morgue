@@ -65,8 +65,6 @@ class VOR(SimpleAudioDemodulator):
 		self.dir_scale = dir_scale = internal_audio_rate // dir_rate
 		self.audio_scale = audio_scale = channel_rate // internal_audio_rate
 
-		self.zeroer = blocks.add_const_vff((zero_point * (math.pi / 180), ))
-		
 		self.dir_vector_filter = grfilter.fir_filter_ccf(1, firdes.low_pass(
 			1, dir_rate, 1, 2, firdes.WIN_HAMMING, 6.76))
 		self.am_channel_filter_block = grfilter.fir_filter_ccf(1, firdes.low_pass(
@@ -76,7 +74,8 @@ class VOR(SimpleAudioDemodulator):
 		self.fm_channel_filter_block = grfilter.freq_xlating_fir_filter_ccc(1, (firdes.low_pass(1.0, channel_rate, fm_subcarrier / 2, fm_subcarrier / 2, firdes.WIN_HAMMING)), fm_subcarrier, channel_rate)
 		self.multiply_conjugate_block = blocks.multiply_conjugate_cc(1)
 		self.complex_to_arg_block = blocks.complex_to_arg(1)
-		self.am_agc_block = analog.feedforward_agc_cc(1024, 1.0)
+		am_agc_samples = 1024
+		self.am_agc_block = analog.feedforward_agc_cc(am_agc_samples, 1.0)
 		self.am_demod_block = analog.am_demod_cf(
 			channel_rate=channel_rate,
 			audio_decim=audio_scale,
@@ -92,6 +91,42 @@ class VOR(SimpleAudioDemodulator):
 		self.audio_filter_block = make_lofi_audio_filter(internal_audio_rate)
 		self.resampler_block = make_resampler(internal_audio_rate, self.audio_rate)
 
+		# Compute filter-introduced delays on AM vs. FM path:
+		def sampleDelay(filter):
+			print 'filter taps = ', len(filter.taps())
+			return float(len(filter.taps()))
+		# AM-only delay:
+		am_delay = 0.0
+		# am_channel_filter_block
+		am_delay += sampleDelay(self.am_channel_filter_block) / channel_rate
+		print 'A', am_delay
+		# am_agc_block
+		am_delay += float(am_agc_samples) / channel_rate
+		print 'B', am_delay
+		# am_demod_block <- changes rate
+		am_delay += float(len(filter.optfir.low_pass(0.5, 	   # Filter gain
+		                             channel_rate, # Sample rate
+					     5000,   # Audio passband
+					     5500,   # Audio stopband
+					     0.1, 	   # Passband ripple
+					     60))) / internal_audio_rate
+		print 'C', am_delay
+		# ...goertzel_am
+		# FM-only delay:
+		fm_delay = 0.0
+		# fm_channel_filter_block
+		fm_delay += sampleDelay(self.fm_channel_filter_block) / channel_rate
+		print 'D', am_delay
+		# fm_demod_block
+		# zero delay
+		# ...goertzel_fm
+		print am_delay, fm_delay
+		
+		relative_delay = (am_delay - fm_delay) / 30 * (2*math.pi)
+		print 'Phase delay', relative_delay
+
+		self.zeroer = blocks.add_const_vff((zero_point * (math.pi / 180) - relative_delay, ))
+		
 		##################################################
 		# Connections
 		##################################################
