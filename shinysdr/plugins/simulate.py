@@ -116,6 +116,7 @@ class _SimulatedRXDriver(ExportedState, gr.hier_block2):
 		add_modulator(30e3, 'fm', 'NFM')
 		add_modulator(-30e3, 'vor1', 'VOR', angle=0)
 		add_modulator(-60e3, 'vor2', 'VOR', angle=math.pi / 2)
+		add_modulator(50e3, 'rtty', 'RTTY')
 		
 		bus_input = 0
 		for signal in signals:
@@ -201,5 +202,3 @@ class _SimulatedTransmitter(gr.hier_block2, ExportedState):
 	@setter
 	def set_gain(self, value):
 		self.__mult.set_k(10.0 ** (float(value) / 10))
-
-

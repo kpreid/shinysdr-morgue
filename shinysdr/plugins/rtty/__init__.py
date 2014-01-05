@@ -33,7 +33,7 @@ from gnuradio.filter import firdes
 from gnuradio import gr
 
 from shinysdr.blocks import MultistageChannelFilter, make_resampler
-from shinysdr.modes import ModeDef, IDemodulator
+from shinysdr.modes import ModeDef, IDemodulator, IModulator
 from shinysdr.signals import SignalType
 from shinysdr.types import Range
 from shinysdr.values import BlockCell, ExportedState, exported_value, setter
@@ -134,6 +134,31 @@ class RTTYDemodulator(gr.hier_block2, ExportedState):
 					textstring += r
 			self.__text = textstring[-20:]
 		return self.__text
+
+
+class RTTYModulator(gr.hier_block2, ExportedState):
+	implements(IModulator)
+	
+	def __init__(self):
+		gr.hier_block2.__init__(
+			self, 'RTTY modulator',
+			gr.io_signature(1, 1, gr.sizeof_float * 1),
+			gr.io_signature(1, 1, gr.sizeof_gr_complex * 1),
+		)
+		
+		# TODO should take data input
+		self.connect(self, blocks.null_sink(gr.sizeof_float))
+		
+		self.connect(
+			blocks.wavfile_source('/External/Projects/sdr/GRC experiments/RTTY.wav', True),
+			grfilter.hilbert_fc(65, firdes.WIN_HAMMING, 6.76),
+			self)
+	
+	def get_input_type(self):
+		return SignalType(kind='MONO', sample_rate=1000)
+	
+	def get_output_type(self):
+		return SignalType(kind='IQ', sample_rate=6000)
 
 
 class RTTYFSKDemodulator(gr.hier_block2, ExportedState):
@@ -266,4 +291,8 @@ class RTTYDecoder(object):
 #
 
 # Plugin exports
-pluginMode = ModeDef('RTTY', label='RTTY', demodClass=RTTYDemodulator)
+pluginMode = ModeDef(
+	mode='RTTY',
+	label='RTTY',
+	demod_class=RTTYDemodulator,
+	mod_class=RTTYModulator)
