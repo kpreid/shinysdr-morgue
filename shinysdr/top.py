@@ -95,6 +95,7 @@ class Top(gr.top_block, ExportedState, RecursiveLockBlockMixin):
         self.__monitor_rx_driver = None
         self.monitor = MonitorSink(
             signal_type=SignalType(sample_rate=10000, kind='IQ'),  # dummy value will be updated in _do_connect
+            enable_scope=True,
             context=Context(self))
         self.monitor.get_interested_cell().subscribe(self.__start_or_stop_later)
         self.__clip_probe = MaxProbe()
