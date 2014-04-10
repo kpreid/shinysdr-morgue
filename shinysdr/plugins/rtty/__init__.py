@@ -70,6 +70,7 @@ class RTTYDemodulator(gr.hier_block2, ExportedState):
 		self.bit_sink = blocks.message_sink(gr.sizeof_char, self.__bit_queue, True)
 
 		#self.connect(self, blocks.null_sink(gr.sizeof_gr_complex))
+		self.fsk_demod = RTTYFSKDemodulator(input_rate=demod_rate, baud=baud)
 		self.connect(
 			self,
 			self.__channel_filter,
@@ -77,7 +78,7 @@ class RTTYDemodulator(gr.hier_block2, ExportedState):
 		#	blocks.wavfile_source("/External/Projects/sdr/GRC experiments/RTTY.wav", True),
 	    #	blocks.throttle(gr.sizeof_float*1, demod_rate),
 		#	grfilter.hilbert_fc(65, grfilter.firdes.WIN_HAMMING, 6.76),
-			RTTYFSKDemodulator(input_rate=demod_rate, baud=baud),
+			self.fsk_demod,
 			# TODO once debugging stuff is over, get rid of these extra bits
 			blocks.char_to_short(1),
 			blocks.add_const_vss((ord('0')*256, )),
@@ -90,6 +91,11 @@ class RTTYDemodulator(gr.hier_block2, ExportedState):
 			self)
 		
 		self.__decoder = RTTYDecoder()
+	
+	def state_def(self, callback):
+		super(RTTYDemodulator, self).state_def(callback)
+		# TODO decoratorify
+		callback(BlockCell(self, 'fsk_demod'))
 	
 	def get_output_type(self):
 		return SignalType(kind='MONO', sample_rate=self.samp_rate)
@@ -130,7 +136,7 @@ class RTTYDemodulator(gr.hier_block2, ExportedState):
 		return self.__text
 
 
-class RTTYFSKDemodulator(gr.hier_block2):
+class RTTYFSKDemodulator(gr.hier_block2, ExportedState):
 	'''
 	Demodulate FSK with parameters suitable for RTTY.
 	
@@ -157,6 +163,7 @@ class RTTYFSKDemodulator(gr.hier_block2):
 			omega_relative_limit=0.005)
 		self.__dc_blocker = grfilter.dc_blocker_ff(int(bit_time*7.5*2*20), False)
 		self.__quadrature_demod = analog.quadrature_demod_cf(-input_rate/(2*math.pi*fsk_deviation_hz))
+		self.__freq_probe = blocks.probe_signal_f()
 		
 		self.connect(
 			self,
@@ -165,7 +172,16 @@ class RTTYFSKDemodulator(gr.hier_block2):
 			self.__clock_recovery,
 			digital.binary_slicer_fb(),
 			self)
-		
+		self.connect(self.__dc_blocker, self.__freq_probe)
+
+	@exported_value(ctor=Range([(-2, 2)]))
+	def get_probe(self):
+		return abs(self.__freq_probe.level())
+
+	@exported_value(ctor=Range([(0, 100)]))
+	def get_omega(self):
+		return self.__clock_recovery.omega()
+
 
 BIT_PAIR_ERROR = "<p>"
 WRONG_STOP_BIT = "<w>"
