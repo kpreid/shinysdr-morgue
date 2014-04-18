@@ -27,6 +27,7 @@ from gnuradio import analog
 from gnuradio import fft
 from gnuradio import filter as grfilter  # don't shadow builtin
 from gnuradio.filter import firdes
+from gnuradio.filter import optfir
 
 import math
 import os.path
@@ -104,7 +105,7 @@ class VOR(SimpleAudioDemodulator):
 		am_delay += float(am_agc_samples) / channel_rate
 		print 'B', am_delay
 		# am_demod_block <- changes rate
-		am_delay += float(len(filter.optfir.low_pass(0.5, 	   # Filter gain
+		am_delay += float(len(optfir.low_pass(0.5, 	   # Filter gain
 		                             channel_rate, # Sample rate
 					     5000,   # Audio passband
 					     5500,   # Audio stopband
