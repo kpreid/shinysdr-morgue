@@ -631,3 +631,7 @@ table.aligned-controls-table {
 .widget-Banner-hidden {
   display: none;
 }
+.widget-ScopePlot {
+  /* give a default height */
+  min-height: 5em;
+}

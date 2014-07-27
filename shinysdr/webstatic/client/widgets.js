@@ -564,6 +564,11 @@ define(['./types', './values', './events', './widget', './gltools', './database'
       
       // TODO: VOR plugin stuff; let the plugin handle it
       addWidget('angle', widgets.VOR$Angle, '');
+      // TODO: similarly, less obvious, this should be handled by interfaces
+      if ('monitor' in block) {
+        ignore('monitor');
+        addWidget(block.monitor.get().scope, widgets.ScopePlot, '');
+      }
       ignore('zero_point');
     }, true);
   }
