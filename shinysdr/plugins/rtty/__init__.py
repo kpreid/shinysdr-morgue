@@ -42,7 +42,8 @@ from shinysdr.values import BlockCell, ExportedState, exported_value, setter
 class RTTYDemodulator(gr.hier_block2, ExportedState):
 	implements(IDemodulator)
 	
-	__cutoff_freq = 500
+	__cutoff_freq = 300
+	__transition = 100
 
 	def __init__(self, mode,
 			input_rate=0,
@@ -58,14 +59,14 @@ class RTTYDemodulator(gr.hier_block2, ExportedState):
 		baud = 45.5  # TODO param
 		self.baud = baud
 
-		demod_rate = 6000  # TODO optimize this value
+		demod_rate = 1000  # TODO optimize this value
 		self.samp_rate = demod_rate  # TODO rename
 		
 		self.__channel_filter = MultistageChannelFilter(
 			input_rate=input_rate,
 			output_rate=demod_rate,
 			cutoff_freq=self.__cutoff_freq,
-			transition_width=demod_rate*0.1) # TODO optimize filter band
+			transition_width=self.__transition) # TODO optimize filter band
 		self.__bit_queue = gr.msg_queue(limit=100)
 		self.bit_sink = blocks.message_sink(gr.sizeof_char, self.__bit_queue, True)
 
@@ -113,7 +114,7 @@ class RTTYDemodulator(gr.hier_block2, ExportedState):
 		return {
 			'low': -self.__cutoff_freq,
 			'high': self.__cutoff_freq,
-			'width': self.samp_rate*0.1
+			'width': self.__transition
 		}
 
 	@exported_value(ctor=unicode)
