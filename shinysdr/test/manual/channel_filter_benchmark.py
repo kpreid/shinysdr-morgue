@@ -38,10 +38,11 @@ def test_one_filter(**kwargs):
     size = 100000000
     
     top = gr.top_block()
+    sink = blocks.vector_sink_c()
     top.connect(
         blocks.vector_source_c([5] * size),
         f,
-        blocks.null_sink(gr.sizeof_gr_complex))
+        sink)
         
     print f.explain()
     
@@ -51,7 +52,7 @@ def test_one_filter(**kwargs):
     top.stop()
     t1 = time.clock()
 
-    print size, 'samples processed in', t1 - t0, 'CPU-seconds'
+    print size, 'samples processed in', t1 - t0, 'CPU-seconds, ', len(sink.data()), ' samples out'
 
 
 if __name__ == '__main__':
