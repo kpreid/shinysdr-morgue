@@ -35,7 +35,7 @@ def test_one_filter(**kwargs):
     print '------ %s -------' % (kwargs,)
     f = MultistageChannelFilter(**kwargs)
     
-    size = 10000000
+    size = 100000000
     
     top = gr.top_block()
     top.connect(
