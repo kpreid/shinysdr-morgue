@@ -182,7 +182,7 @@ class _FilterPlanFinalDecimatingStage(_FilterPlanDecimatingStage):
         return 'final filter and ' + super(_FilterPlanFinalDecimatingStage, self).explain()
 
 
-class _FilterPlanRationalResamplerStage(_FilterPlanStage):
+class _FilterPlanRationalResamplerUserStage(_FilterPlanStage):
     def __init__(self, decimation, interpolation, **kwargs):
         self.decimation = decimation
         self.interpolation = interpolation
@@ -197,14 +197,19 @@ class _FilterPlanRationalResamplerStage(_FilterPlanStage):
             taps=taps)
     
     def calculate_taps(self, final_cutoff, final_transition):
-        # TODO: This might be internal, and we eventually want to integrate it in the plan anyway
-        return rational_resampler.design_filter(
-            interpolation=self.interpolation,
-            decimation=self.decimation,
-            fractional_bw=0.4)
+        #return rational_resampler.design_filter(
+        #    interpolation=self.interpolation,
+        #    decimation=self.decimation,
+        #    fractional_bw=0.4)
+        return firdes.low_pass(
+            self.interpolation,
+            self.interpolation * self.input_rate,  # the "after interpolation and before decimation" sampling rate
+            final_cutoff,
+            final_transition,
+            firdes.WIN_HAMMING)
     
     def explain(self):
-        return 'rational_resampler by %s/%s (stage rates %s/%s)' % (self.interpolation, self.decimation, self.output_rate, self.input_rate)
+        return 'user filter and resample by %s/%s (stage rates %s/%s)' % (self.interpolation, self.decimation, self.output_rate, self.input_rate)
 
 
 class _FilterPlanPfbResamplerStage(_FilterPlanStage):
@@ -229,6 +234,7 @@ def _make_filter_plan_1(input_rate, output_rate):
     
     total_decimation = max(1, int(input_rate // output_rate))
     
+    # adjust decimation for the sake of the interpolation
     using_rational_resampler = _use_rational_resampler and input_rate % 1 == 0 and output_rate % 1 == 0
     if using_rational_resampler:
         # If using rational resampler, don't decimate to the point that we get a fractional rate, if possible.
@@ -239,34 +245,41 @@ def _make_filter_plan_1(input_rate, output_rate):
         # print input_rate / total_decimation, total_decimation, input_rate, output_rate, input_rate // gcd(input_rate, output_rate)
         # TODO: Don't re-factorize unnecessarily
     
+    # determine individual decimation stages
     stage_decimations = factorize(total_decimation)
     stage_decimations.reverse()
+    
+    # determine remaining processing
+    after_decimation_rate = input_rate / total_decimation
+    if after_decimation_rate == output_rate and len(stage_decimations) > 0:
+        # We don't need a resampling (interpolating) final stage, but we still want to have a distinguished final stage (where the user-specified filter is applied), so we delete the last decimation stage, which will be recovered later.
+        after_decimation_rate *= stage_decimations[-1]
+        stage_decimations[-1:] = []
+        # Note: total_decimation is no longer valid, but we don't use it after here
     
     # loop variables
     stage_designs = []
     stage_input_rate = input_rate
-    last_index = len(stage_decimations) - 1
     
     if len(stage_decimations) == 0:
-        # interpolation or nothing -- don't put it in the stages
+        # still need at least one stage for frequency translation
+        # TODO: Add an input parameter for when we aren't going to use this feature and can skip this stage.
         freq_xlate_stage = len(stage_designs)
         stage_designs.append(_FilterPlanXlateStage(
             rate=stage_input_rate))
     else:
-        # decimation
         for i, stage_decimation in enumerate(stage_decimations):
             next_rate = stage_input_rate / stage_decimation
         
-            stage_type = _FilterPlanFinalDecimatingStage if i == last_index else _FilterPlanDecimatingStage
             if i == 0:
                 freq_xlate_stage = len(stage_designs)
-                stage_designs.append(stage_type(
+                stage_designs.append(_FilterPlanDecimatingStage(
                     freq_xlating=True,
                     decimation=stage_decimation,
                     input_rate=stage_input_rate,
                     output_rate=next_rate))
             else:
-                stage_designs.append(stage_type(
+                stage_designs.append(_FilterPlanDecimatingStage(
                     freq_xlating=False,
                     decimation=stage_decimation,
                     input_rate=stage_input_rate,
@@ -274,32 +287,28 @@ def _make_filter_plan_1(input_rate, output_rate):
         
             stage_input_rate = next_rate
     
-    # final connection and resampling
-    if stage_input_rate == output_rate:
-        # exact multiple, no fractional resampling needed
-        stage_designs.append(_FilterPlanCommentStage(
-            comment='No final resampler stage.',
-            rate=output_rate))
+    assert stage_input_rate == after_decimation_rate
+    
+    # TODO: systematically combine resampler with final filter stage
+    if using_rational_resampler:
+        if stage_input_rate % 1 != 0:
+            raise Exception("shouldn't happen", stage_input_rate)
+        stage_input_rate = int(stage_input_rate)  # because of float division above
+        common = gcd(output_rate, stage_input_rate)
+        interpolation = output_rate // common
+        decimation = stage_input_rate // common
+        stage_designs.append(_FilterPlanRationalResamplerUserStage(
+            interpolation=interpolation,
+            decimation=decimation,
+            input_rate=stage_input_rate,
+            output_rate=output_rate))
     else:
-        # TODO: systematically combine resampler with final filter stage
-        if using_rational_resampler:
-            if stage_input_rate % 1 != 0:
-                raise Exception("shouldn't happen", stage_input_rate)
-            stage_input_rate = int(stage_input_rate)  # because of float division above
-            common = gcd(output_rate, stage_input_rate)
-            interpolation = output_rate // common
-            decimation = stage_input_rate // common
-            stage_designs.append(_FilterPlanRationalResamplerStage(
-                interpolation=interpolation,
-                decimation=decimation,
-                input_rate=stage_input_rate,
-                output_rate=output_rate))
-        else:
-            # TODO: cache filter computation as optfir is used and takes a noticeable time
-            stage_designs.append(_FilterPlanPfbResamplerStage(
-                resample_rate=float(output_rate) / stage_input_rate,
-                input_rate=stage_input_rate,
-                output_rate=output_rate))
+        raise Exception('pfb user filtering not implemented yet')
+        # TODO: cache filter computation as optfir is used and takes a noticeable time
+        stage_designs.append(_FilterPlanPfbResamplerStage(
+            resample_rate=float(output_rate) / stage_input_rate,
+            input_rate=stage_input_rate,
+            output_rate=output_rate))
     
     plan = _MultistageChannelFilterPlan(
         stage_designs=stage_designs,
