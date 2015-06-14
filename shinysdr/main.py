@@ -152,14 +152,15 @@ def top_defaults(top):
     state = {}
     
     # TODO: fix fragility of assumptions
-    sources = top.state()['source_name'].type().values()
-    restricted = dict(sources)
-    if 'audio' in restricted: del restricted['audio']  # typically not RF
-    if 'sim' in restricted: del restricted['sim']  # would prefer the real thing
-    if 'osmo' in restricted:
-        state['source_name'] = 'osmo'
-    elif len(restricted.keys()) > 0:
-        state['source_name'] = restricted.keys()[0]
+    if 'source_name' in top.state():
+        sources = top.state()['source_name'].type().values()
+        restricted = dict(sources)
+        if 'audio' in restricted: del restricted['audio']  # typically not RF
+        if 'sim' in restricted: del restricted['sim']  # would prefer the real thing
+        if 'osmo' in restricted:
+            state['source_name'] = 'osmo'
+        elif len(restricted.keys()) > 0:
+            state['source_name'] = restricted.keys()[0]
     # else out of ideas, let top block pick
     
     return state

@@ -64,6 +64,7 @@ class Config(object):
         # private: config state
         self.__stereo = True
         self.__server_audio = None
+        self.__ultralight = False
         
         # private: meta
         self.__waiting = []
@@ -76,13 +77,22 @@ class Config(object):
         self.__finished = True
         if len(self._service_makers) == 0:
             warnings.warn('No network service defined!')
+        
+        if self.__ultralight and len(self.sources._values) != 1:
+            raise ValueError('given config.ultralight(), exactly one device must be defined')
     
     def _create_top_block(self):
-        from shinysdr import top
-        return top.Top(
-            devices=self.devices._values,
-            audio_config=self.__server_audio,
-            stereo=self.__stereo)
+        if self.__ultralight:
+            from shinysdr import ultralight
+            return ultralight.TwoWayRadio(
+                device=self.devices._values.values()[0],
+                audio_config=self.__server_audio)
+        else:
+            from shinysdr import top
+            return top.Top(
+                devices=self.devices._values,
+                audio_config=self.__server_audio,
+                stereo=self.__stereo)
     
     def _not_finished(self):
         if self.__finished:
@@ -134,6 +144,10 @@ class Config(object):
             return lazy_ghpsdr.DspserverService(top, note_dirty, 'tcp:8000')
         
         self._service_makers.append(make_service)
+
+    def ultralight(self):
+        self._not_finished()
+        self.__ultralight = True
     
     def set_server_audio_allowed(self, allowed, device_name='', sample_rate=44100):
         '''
