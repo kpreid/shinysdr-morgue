@@ -52,7 +52,7 @@ html.subwindowed-page, .subwindowed-page body {
 
 /* container for subwindows */
 .subwindowed {
-  height: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: row;
   justify-content: center;
@@ -61,7 +61,6 @@ html.subwindowed-page, .subwindowed-page body {
   display: flex;
   flex-direction: column;
   flex: 0 1 auto;
-  height: 100%; /* doesn't change layout height, but enables percentage height to work inside */
 }
 .subwindowed > shinysdr-subwindow.stretchy {
   flex: 1 2;
@@ -228,10 +227,9 @@ h2 input {
 
 /* main visualizations */
 .hscalegroup {
-  flex: 1 1;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
   overflow-x: scroll;
   overflow-y: hidden;
   min-width: 0px; /* cause Chrome 27.0.1453.116 to be willing to scroll the flex element rather than stretch; don't know whether this is a bug or what */
