@@ -639,7 +639,7 @@ class OurStreamFactory(autobahn.twisted.websocket.WebSocketServerFactory):
     protocol = OurStreamProtocol
     
     def __init__(self, caps, noteDirty):
-        autobahn.twisted.websocket.WebSocketServerFactory.__init__(self)
+        autobahn.twisted.websocket.WebSocketServerFactory.__init__(self, debug=True)
         self.__caps = caps
         self.__noteDirty = noteDirty
     
