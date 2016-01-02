@@ -45,7 +45,7 @@ from zope.interface import Interface, implements, providedBy  # available via Tw
 
 from gnuradio import gr
 
-import autobahn
+import autobahn.twisted.websocket
 
 import shinysdr.plugins
 import shinysdr.db
@@ -572,29 +572,17 @@ def _lookup_block(block, path):
     return block
 
 
-class OurStreamProtocol(protocol.Protocol):
+class OurStreamProtocol(autobahn.twisted.websocket.WebSocketServerProtocol):
     def __init__(self, caps, noteDirty):
+        autobahn.twisted.websocket.WebSocketServerProtocol.__init__(self)
         self._caps = caps
         self._seenValues = {}
         self.inner = None
         self.__noteDirty = noteDirty
     
-    def dataReceived(self, data):
-        """Twisted Protocol implementation.
-        
-        Additionally, txWS takes no care with exceptions here, so we catch and log."""
-        # pylint: disable=broad-except
-        try:
-            if self.inner is None:
-                # To work around txWS's lack of a notification when the URL is available, all clients send a dummy first message.
-                self.__dispatch_url()
-            else:
-                self.inner.dataReceived(data)
-        except Exception as e:
-            log.err(e)
-    
-    def __dispatch_url(self):
-        loc = self.transport.location
+    def onConnect(self, request):
+        """WebSocketServerProtocol implementation"""
+        loc = request.path
         log.msg('Stream connection to ', loc)
         path = [urllib.unquote(x) for x in loc.split('/')]
         assert path[0] == ''
@@ -614,20 +602,20 @@ class OurStreamProtocol(protocol.Protocol):
             root_object = _lookup_block(root_object, path[1:])
             self.inner = StateStreamInner(self.__send, root_object, loc, self.__noteDirty)  # note reuse of loc as HTTP path; probably will regret this
         else:
-            raise Exception('Unknown path: %r' % (path,))
+            raise Exception('Unknown path: %r' % (path,))  # TODO check if cleans up properly in autobahn
     
-    def connectionMade(self):
-        """twisted Protocol implementation"""
-        self.transport.setBinaryMode(True)
-        # Unfortunately, txWS calls this too soon for transport.location to be available
+    def onMessage(self, payload, is_binary):
+        """WebSocketServerProtocol implementation"""
+        self.inner.dataReceived(payload)
     
     def connectionLost(self, reason):
         """twisted Protocol implementation"""
+        super(OurStreamProtocol, self).connectionLost(reason)
         if self.inner is not None:
             self.inner.connectionLost(reason)
     
     def __send(self, message, safe_to_drop=False):
-        if len(self.transport.transport.dataBuffer) > 1000000:
+        if False and len(self.transport.transport.dataBuffer) > 1000000:
             # TODO: condition is horrible implementation-diving kludge
             # Don't accumulate indefinite buffer if we aren't successfully getting it onto the network.
             
@@ -637,13 +625,17 @@ class OurStreamProtocol(protocol.Protocol):
                 log.err('Dropping connection due to too much data on stream ' + self.transport.location)
                 self.transport.close(reason='Too much data buffered')
         else:
-            self.transport.write(message)
+            if isinstance(message, unicode):
+                self.sendMessage(message.encode('utf-8'), isBinary=False)
+            else:
+                self.sendMessage(message, isBinary=True)
 
 
-class OurStreamFactory(protocol.Factory):
+class OurStreamFactory(autobahn.twisted.websocket.WebSocketServerFactory):
     protocol = OurStreamProtocol
     
     def __init__(self, caps, noteDirty):
+        autobahn.twisted.websocket.WebSocketServerFactory.__init__(self)
         self.__caps = caps
         self.__noteDirty = noteDirty
     
@@ -764,7 +756,7 @@ class WebService(Service):
             self.__visit_path = '/' + urllib.quote(root_cap, safe='') + '/'
             ws_caps = {root_cap: root_object}
         
-        #self.__ws_protocol = txws.WebSocketFactory(OurStreamFactory(ws_caps, note_dirty))
+        self.__ws_factory = OurStreamFactory(ws_caps)
         
         # UI entry point
         appRoot.putChild('', _RadioIndexHtmlResource(title))
@@ -805,7 +797,7 @@ class WebService(Service):
         Service.startService(self)
         if self.__ws_port_obj is not None:
             raise Exception('Already started')
-        #self.__ws_port_obj = strports.listen(self.__ws_port, self.__ws_protocol)
+        self.__ws_port_obj = strports.listen(self.__ws_port, self.__ws_factory)
         self.__http_port_obj = strports.listen(self.__http_port, self.__site)
     
     def stopService(self):
@@ -815,8 +807,7 @@ class WebService(Service):
         # TODO: Does Twisted already have something to bundle up a bunch of ports for shutdown?
         return defer.DeferredList([
             self.__http_port_obj.stopListening(),
-            #self.__ws_port_obj.stopListening(),
-        ])
+            self.__ws_port_obj.stopListening()])
     
     def get_url(self):
         port_num = self.__http_port_obj.socket.getsockname()[1]  # TODO touching implementation, report need for a better way (web_port_obj.port is 0 if specified port is 0, not actual port)
