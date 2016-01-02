@@ -582,27 +582,31 @@ class OurStreamProtocol(autobahn.twisted.websocket.WebSocketServerProtocol):
     
     def onConnect(self, request):
         """WebSocketServerProtocol implementation"""
-        loc = request.path
-        log.msg('Stream connection to ', loc)
-        path = [urllib.unquote(x) for x in loc.split('/')]
-        assert path[0] == ''
-        path[0:1] = []
-        if path[0] in self._caps:
-            root_object = self._caps[path[0]]
+        try:
+            loc = request.path
+            log.msg('Stream connection to ', loc)
+            path = [urllib.unquote(x) for x in loc.split('/')]
+            assert path[0] == ''
             path[0:1] = []
-        elif None in self._caps:
-            root_object = self._caps[None]
-        else:
-            raise Exception('Unknown cap')  # TODO better error reporting
-        if len(path) == 1 and path[0].startswith('audio?rate='):
-            rate = int(json.loads(urllib.unquote(path[0][len('audio?rate='):])))
-            self.inner = AudioStreamInner(the_reactor, self.__send, root_object, rate)
-        elif len(path) >= 1 and path[0] == 'radio':
-            # note _lookup_block may throw. TODO: Better error reporting
-            root_object = _lookup_block(root_object, path[1:])
-            self.inner = StateStreamInner(self.__send, root_object, loc, self.__noteDirty)  # note reuse of loc as HTTP path; probably will regret this
-        else:
-            raise Exception('Unknown path: %r' % (path,))  # TODO check if cleans up properly in autobahn
+            if path[0] in self._caps:
+                root_object = self._caps[path[0]]
+                path[0:1] = []
+            elif None in self._caps:
+                root_object = self._caps[None]
+            else:
+                raise Exception('Unknown cap')  # TODO better error reporting
+            if len(path) == 1 and path[0] == 'audio':
+                rate = int(json.loads(request.params['rate'][0]))
+                self.inner = AudioStreamInner(the_reactor, self.__send, root_object, rate)
+            elif len(path) >= 1 and path[0] == 'radio':
+                # note _lookup_block may throw. TODO: Better error reporting
+                root_object = _lookup_block(root_object, path[1:])
+                self.inner = StateStreamInner(self.__send, root_object, loc, self.__noteDirty)  # note reuse of loc as HTTP path; probably will regret this
+            else:
+                raise Exception('Unknown path: %r' % (path,))  # TODO check if cleans up properly in autobahn
+        except Exception, e:
+            log.err('in onConnect: %s' % e)
+            raise
     
     def onMessage(self, payload, is_binary):
         """WebSocketServerProtocol implementation"""
