@@ -805,7 +805,7 @@ class WebService(Service):
         Service.startService(self)
         if self.__ws_port_obj is not None:
             raise Exception('Already started')
-        self.__ws_port_obj = strports.listen(self.__ws_port, self.__ws_protocol)
+        #self.__ws_port_obj = strports.listen(self.__ws_port, self.__ws_protocol)
         self.__http_port_obj = strports.listen(self.__http_port, self.__site)
     
     def stopService(self):
@@ -815,7 +815,8 @@ class WebService(Service):
         # TODO: Does Twisted already have something to bundle up a bunch of ports for shutdown?
         return defer.DeferredList([
             self.__http_port_obj.stopListening(),
-            self.__ws_port_obj.stopListening()])
+            #self.__ws_port_obj.stopListening(),
+        ])
     
     def get_url(self):
         port_num = self.__http_port_obj.socket.getsockname()[1]  # TODO touching implementation, report need for a better way (web_port_obj.port is 0 if specified port is 0, not actual port)
