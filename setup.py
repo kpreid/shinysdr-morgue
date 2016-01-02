@@ -43,11 +43,11 @@ setup(
     packages=find_packages(exclude=['shinysdr.test']),
     include_package_data=True,
     install_requires=[
-        #'gnuradio',  # Not PyPI
-        #'osmosdr',  # Not PyPI
-        'twisted',
-        'txws',
-        'ephem'
+        'autobahn',
+        'ephem',
+        #'gnuradio',  # Not pure Python, not available in PyPI
+        #'osmosdr',  # Not pure Python, not available in PyPI
+        'twisted'
     ],
     dependency_links=[],
     # zip_safe: TODO: Investigate. I suspect unsafe due to serving web resources relative to __file__.

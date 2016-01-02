@@ -45,7 +45,7 @@ from zope.interface import Interface, implements, providedBy  # available via Tw
 
 from gnuradio import gr
 
-import txws
+import autobahn
 
 import shinysdr.plugins
 import shinysdr.db
@@ -53,11 +53,6 @@ from shinysdr.ephemeris import EphemerisResource
 from shinysdr.modes import get_modes
 from shinysdr.signals import SignalType
 from shinysdr.values import ExportedState, BaseCell, BlockCell, StreamCell, IWritableCollection, the_poller
-
-
-# temporary kludge until upstream takes our patch
-if hasattr(txws, 'WebSocketProtocol') and not hasattr(txws.WebSocketProtocol, 'setBinaryMode'):
-    raise ImportError('The installed version of txWS does not support sending binary messages and cannot be used.')
 
 
 # used externally
@@ -769,7 +764,7 @@ class WebService(Service):
             self.__visit_path = '/' + urllib.quote(root_cap, safe='') + '/'
             ws_caps = {root_cap: root_object}
         
-        self.__ws_protocol = txws.WebSocketFactory(OurStreamFactory(ws_caps, note_dirty))
+        #self.__ws_protocol = txws.WebSocketFactory(OurStreamFactory(ws_caps, note_dirty))
         
         # UI entry point
         appRoot.putChild('', _RadioIndexHtmlResource(title))

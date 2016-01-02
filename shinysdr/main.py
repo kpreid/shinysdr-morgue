@@ -174,7 +174,7 @@ def check_versions():
     t = DependencyTester()
     t.check_module_attr('gnuradio.blocks', 'GNU Radio', 'rotator_cc')
     t.check_module_attr('twisted.internet.task', 'Python library Twisted', 'react')
-    t.check_module_attr('txws', 'Python library txWS', 'WebSocketProtocol.setBinaryMode')
+    t.check_module('autobahn', 'Python library Autobahn')
     t.check_module_attr('six', 'Python library six', 'PY2')
     t.check_module('ephem', 'Python library PyEphem')
     t.check_jsdep_file(__file__, 'deps/require.js', 'RequireJS')
