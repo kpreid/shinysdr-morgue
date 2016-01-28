@@ -198,7 +198,7 @@ class _OverlapGimmick(gr.hier_block2):
         If size is not divisible by factor, then the output will necessarily have jitter.
         """
         size = int(size)
-        factor = int(factor)
+        self.__factor = factor = int(factor)
         # assert size % factor == 0
         offset = size // factor
 
@@ -225,6 +225,9 @@ class _OverlapGimmick(gr.hier_block2):
                     blocks.delay(itemsize, (factor - 1 - i) * offset),
                     blocks.stream_to_vector(itemsize, size),
                     (interleave, i))
+    
+    def get_factor(self):
+        return self.__factor
 
 
 class MonitorSink(gr.hier_block2, ExportedState):
@@ -408,9 +411,13 @@ class MonitorSink(gr.hier_block2, ExportedState):
         self.__rebuild()
         self.__connect()
 
-    @exported_value(type=Range([(1, _maximum_fft_rate)], logarithmic=True, integer=False))
+    @exported_value(type_fn=lambda self: self.__get_frame_rate_type())
     def get_frame_rate(self):
         return self.__frame_rate
+
+    def __get_frame_rate_type(self):
+        maximum_rate = int(self.__signal_type.get_sample_rate() * self.__overlapper.get_factor() // self.__time_length)
+        return Range([(maximum_rate/dec, maximum_rate/dec) for dec in xrange(100, 0, -1)], logarithmic=True, integer=False)
 
     @setter
     def set_frame_rate(self, value):
