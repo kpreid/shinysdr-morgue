@@ -94,6 +94,7 @@ class Top(gr.top_block, ExportedState, RecursiveLockBlockMixin):
         self.source = None
         self.__monitor_rx_driver = None
         self.monitor = MonitorSink(
+            maximum_sample_rate=max(d.get_rx_driver().get_output_type().get_sample_rate() for d in devices.itervalues() if d.get_rx_driver() is not None),
             signal_type=SignalType(sample_rate=10000, kind='IQ'),  # dummy value will be updated in _do_connect
             context=Context(self))
         self.monitor.get_interested_cell().subscribe(self.__start_or_stop_later)

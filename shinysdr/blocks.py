@@ -178,7 +178,8 @@ class MessageDistributorSink(gr.hier_block2):
             self.__notify()
 
 
-_maximum_fft_rate = 500
+_maximum_fft_rate = 500 # TODO obsolete
+_maximum_fft_length = 4096
 
 
 class _OverlapGimmick(gr.hier_block2):
@@ -237,16 +238,17 @@ class MonitorSink(gr.hier_block2, ExportedState):
     The units of the FFT output are dB power/Hz (power spectral density) relative to unit amplitude (i.e. dBFS assuming the source clips at +/-1). Note this is different from the standard logpwrfft result of power _per bin_, which would be undesirably dependent on the sample rate and bin size.
     """
     def __init__(self,
+            maximum_sample_rate=0.0,
             signal_type=None,
             enable_scope=False,
             freq_resolution=4096,
             time_length=2048,
-            frame_rate=30.0,
             input_center_freq=0.0,
             paused=False,
             context=None):
         assert isinstance(signal_type, SignalType)
         assert context is not None
+        assert maximum_sample_rate > 0.0
         
         itemsize = signal_type.get_itemsize()
         gr.hier_block2.__init__(
@@ -261,11 +263,14 @@ class MonitorSink(gr.hier_block2, ExportedState):
         self.__context = context
         self.__enable_scope = enable_scope
         
+        maximum_frame_rate = maximum_sample_rate * 16 / _maximum_fft_length
+        self.__frame_rate_type = Range([(maximum_frame_rate/dec, maximum_frame_rate/dec) for dec in xrange(200, 0, -1)], logarithmic=False, integer=False)
+        print self.__frame_rate_type
+        
         # settable parameters
         self.__signal_type = signal_type
         self.__freq_resolution = int(freq_resolution)
         self.__time_length = int(time_length)
-        self.__frame_rate = float(frame_rate)
         self.__input_center_freq = float(input_center_freq)
         self.__paused = bool(paused)
         
@@ -322,11 +327,15 @@ class MonitorSink(gr.hier_block2, ExportedState):
         compensation = todB(input_length / sample_rate) + self.__power_offset
         # TODO: Consider not using the logpwrfft block
         
+        if self.__logpwrfft is not None:
+            frame_rate = self.__logpwrfft.frame_rate()
+        else:
+            frame_rate = 1.0  # TODO tmp
         self.__logpwrfft = logpwrfft.logpwrfft_c(
             sample_rate=sample_rate * overlap_factor,
             fft_size=input_length,
             ref_scale=10.0 ** (-compensation / 20.0) * 2,  # not actually using this as a reference scale value but avoiding needing to use a separate add operation to apply the unit change -- this expression is the inverse of what logpwrfft does internally
-            frame_rate=self.__frame_rate,
+            frame_rate=frame_rate,
             avg_alpha=1.0,
             average=False)
         # It would make slightly more sense to use unsigned chars, but blocks.float_to_uchar does not support vlen.
@@ -340,7 +349,7 @@ class MonitorSink(gr.hier_block2, ExportedState):
         self.__scope_chunker = blocks.stream_to_vector_decimator(
             item_size=gr.sizeof_gr_complex,
             sample_rate=sample_rate,
-            vec_rate=self.__frame_rate,  # TODO doesn't need to be coupled
+            vec_rate=frame_rate,  # TODO doesn't need to be coupled
             vec_len=self.__time_length)
 
     def __connect(self):
@@ -391,7 +400,7 @@ class MonitorSink(gr.hier_block2, ExportedState):
     def set_input_center_freq(self, value):
         self.__input_center_freq = float(value) 
     
-    @exported_value(type=Range([(2, 4096)], logarithmic=True, integer=True))
+    @exported_value(type=Range([(2, _maximum_fft_length)], logarithmic=True, integer=True))
     def get_freq_resolution(self):
         return self.__freq_resolution
 
@@ -411,18 +420,13 @@ class MonitorSink(gr.hier_block2, ExportedState):
         self.__rebuild()
         self.__connect()
 
-    @exported_value(type_fn=lambda self: self.__get_frame_rate_type())
+    @exported_value(type_fn=lambda self: self.__frame_rate_type)
     def get_frame_rate(self):
-        return self.__frame_rate
-
-    def __get_frame_rate_type(self):
-        maximum_rate = int(self.__signal_type.get_sample_rate() * self.__overlapper.get_factor() // self.__time_length)
-        return Range([(maximum_rate/dec, maximum_rate/dec) for dec in xrange(100, 0, -1)], logarithmic=True, integer=False)
+        return self.__logpwrfft.frame_rate()
 
     @setter
     def set_frame_rate(self, value):
         self.__logpwrfft.set_vec_rate(float(value))
-        self.__frame_rate = self.__logpwrfft.frame_rate()
     
     @exported_value(type=bool)
     def get_paused(self):
