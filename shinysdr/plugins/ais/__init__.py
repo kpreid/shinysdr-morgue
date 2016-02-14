@@ -24,18 +24,18 @@ from zope.interface import Interface, implements
 
 from gnuradio import gr
 
-from shinysdr.filters import MultistageChannelFilter
-from shinysdr.modes import ModeDef, IDemodulator
-from shinysdr.signals import no_signal
-from shinysdr.telemetry import TelemetryItem, Track, empty_track
-from shinysdr.values import CollectionState, ExportedState, exported_value
-from shinysdr.web import ClientResourceDef
-
 try:
     from ais.radio import ais_rx
     _available = True
 except ImportError:
     _available = False
+
+from shinysdr.filters import MultistageChannelFilter
+from shinysdr.modes import ModeDef, IDemodulator
+from shinysdr.signals import no_signal
+from shinysdr.telemetry import ITelemetryMessage, ITelemetryObject, TelemetryItem, Track, empty_track
+from shinysdr.values import CollectionState, ExportedState, exported_value
+from shinysdr.web import ClientResourceDef
 
 
 _demod_rate = 48000  # from ais_rx
@@ -46,19 +46,13 @@ _transition_width = 2000
 class AISDemodulator(gr.hier_block2, ExportedState):
     implements(IDemodulator)
     
-    def __init__(self, mode='AIS', input_rate=0, ais_information=None, context=None):
+    def __init__(self, mode='AIS', input_rate=0, context=None):
         assert input_rate > 0
         gr.hier_block2.__init__(
             self, self.__class__.__name__,
-            gr.io_signature(1, 1, gr.sizeof_gr_complex * 1),
+            gr.io_signature(1, 1, gr.sizeof_gr_complex),
             gr.io_signature(0, 0, 0))
-        self.mode = mode
         self.input_rate = input_rate
-        # TODO: 'Information' objects are now a recurring pattern with lots of boilerplate; make a common library
-        if ais_information is not None:
-            self.__information = ais_information
-        else:
-            self.__information = AISInformation()
         
         # ais_rx has its own filter, but it is a plain freq_xlating_fir_filter and therefore potentially more expensive
         band_filter = MultistageChannelFilter(
@@ -95,26 +89,8 @@ class AISDemodulator(gr.hier_block2, ExportedState):
         }
 
 
-class IAISInformation(Interface):
-    '''marker interface for client'''
-    pass
-
-
-class AISInformation(CollectionState):
-    '''
-    Accepts AIS messages and exports the accumulated information obtained from them.
-    '''
-    implements(IAISInformation)
-    
-    def __init__(self):
-        self.__aircraft = {}
-        self.__interesting_aircraft = {}
-        CollectionState.__init__(self, self.__interesting_aircraft, dynamic=True)
-    
-    # not exported
-    def receive(self, message, cpr_decoder):
-        # ...
-        pass
+#class AISMessage(object):
+#    implements(ITelemetryMessage)
 
 
 class IAISStation(Interface):
@@ -123,21 +99,25 @@ class IAISStation(Interface):
 
 
 class AISStation(ExportedState):
-    implements(IAISStation)
+    implements(IAISStation, ITelemetryObject)
     
-    def __init__(self, address_hex):
+    def __init__(self, object_id):
         self.__last_heard_time = None
         self.__track = empty_track
     
     # not exported
     def receive(self, message):
-        pass # ...
+        '''implement ITelemetryObject'''
+        self.__last_heard_time = message.receive_time
+        # TODO
     
     def is_interesting(self):
-        '''
-        Does this station have enough information to be worth mentioning?
-        '''
+        '''implement ITelemetryObject'''
         return True
+    
+    def get_object_expiry(self):
+        '''implement ITelemetryObject'''
+        return self.__last_heard_time + 60
         
     @exported_value(ctor=float)
     def get_last_heard_time(self):
@@ -152,8 +132,7 @@ plugin_mode = ModeDef(
     mode='AIS',
     label='AIS',
     demod_class=AISDemodulator,
-    available=_available,
-    shared_objects={'ais_information': AISInformation})
+    available=_available)
 plugin_client = ClientResourceDef(
     key=__name__,
     resource=static.File(os.path.join(os.path.split(__file__)[0], 'client')),
