@@ -52,7 +52,7 @@ import shinysdr.db
 from shinysdr.ephemeris import EphemerisResource
 from shinysdr.modes import get_modes
 from shinysdr.signals import SignalType
-from shinysdr.values import ExportedState, BaseCell, BlockCell, StreamCell, IWritableCollection, the_poller
+from shinysdr.values import ExportedState, BaseCell, BlockCell, Command, StreamCell, IWritableCollection, the_poller
 
 
 # temporary kludge until upstream takes our patch
@@ -152,11 +152,35 @@ def not_deletable():
     raise Exception('Attempt to delete session root')
 
 
-class BlockResource(Resource):
+class RenderedAsPageResource(Resource):
+    def __init__(self):
+        Resource.__init__(self)
+        self.__element = _BlockHtmlElement()
+    
+    def render_GET(self, request):
+        accept = request.getHeader('Accept')
+        if accept is not None and 'application/json' in accept:  # TODO: Implement or obtain correct Accept interpretation
+            request.setHeader('Content-Type', 'application/json')
+            return _serialize(self.resourceDescription()).encode('utf-8')
+        else:
+            request.setHeader('Content-Type', 'text/html;charset=utf-8')
+            return renderElement(request, self.__element)
+
+
+class PageCellResource(RenderedAsPageResource):
+    def __init__(self, cell):
+        RenderedAsPageResource.__init__(self)
+        self.__cell = cell
+    
+    def resourceDescription(self):
+        return self.__cell.get()
+
+
+class BlockResource(RenderedAsPageResource):
     isLeaf = False
 
     def __init__(self, block, noteDirty, deleteSelf):
-        Resource.__init__(self)
+        RenderedAsPageResource.__init__(self)
         self._block = block
         self._noteDirty = noteDirty
         self._deleteSelf = deleteSelf
@@ -168,9 +192,11 @@ class BlockResource(Resource):
             for key, cell in block.state().iteritems():
                 if cell.isBlock():
                     self._blockCells[key] = cell
+                elif isinstance(cell, Command):
+                    # TODO: We'd also like to be able to POST a command, use a class that does that
+                    self.putChild(key, PageCellResource(cell))
                 else:
                     self.putChild(key, ValueCellResource(cell, self._noteDirty))
-        self.__element = _BlockHtmlElement()
     
     def getChild(self, name, request):
         if self._dynamic:
@@ -198,15 +224,6 @@ class BlockResource(Resource):
                 raise Exception('Block is not a writable collection')
             self._block.delete_child(name)
         return BlockResource(block, self._noteDirty, deleter)
-    
-    def render_GET(self, request):
-        accept = request.getHeader('Accept')
-        if accept is not None and 'application/json' in accept:  # TODO: Implement or obtain correct Accept interpretation
-            request.setHeader('Content-Type', 'application/json')
-            return _serialize(self.resourceDescription()).encode('utf-8')
-        else:
-            request.setHeader('Content-Type', 'text/html;charset=utf-8')
-            return renderElement(request, self.__element)
     
     def render_POST(self, request):
         """currently only meaningful to create children of CollectionResources"""
