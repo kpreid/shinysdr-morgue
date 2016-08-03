@@ -22,6 +22,7 @@ Plugin for controlling Elecraft radios (K3, K3s, KX3, K2).
 from __future__ import absolute_import, division
 
 import struct
+import sys
 
 from twisted.internet import defer
 from twisted.internet.protocol import Factory, Protocol
@@ -441,3 +442,25 @@ class _ElecraftClientProtocol(Protocol):
     def _proxy(self):
         """for use by connect_to_rig"""
         return self.__proxy_obj
+
+
+def frequency_editor_experiment_main():
+    from twisted.internet.task import deferLater, react
+    
+    @defer.inlineCallbacks
+    def body(reactor):
+        print >>sys.stderr, 'started up'
+        port, = sys.argv[1:]
+        device = yield connect_to_rig(reactor, port)
+        proxy = device.get_components_dict()['rig']
+        print >>sys.stderr, 'operating'
+        yield deferLater(reactor, 0.1, lambda: None)  # TODO fudge factor
+        proxy._send_command('MC001;')
+        yield deferLater(reactor, 0.1, lambda: None)  # TODO fudge factor
+        print device.get_freq()
+        print >>sys.stderr, 'exiting'
+    
+    react(body)
+
+if __name__ == '__main__':
+    frequency_editor_experiment_main()
