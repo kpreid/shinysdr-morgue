@@ -454,11 +454,12 @@ def frequency_editor_experiment_main():
         device = yield connect_to_rig(reactor, port)
         proxy = device.get_components_dict()['rig']
         print >>sys.stderr, 'operating'
-        yield deferLater(reactor, 0.1, lambda: None)  # TODO fudge factor
-        proxy._send_command('MC001;')
-        yield deferLater(reactor, 0.1, lambda: None)  # TODO fudge factor
-        print device.get_freq()
-        print >>sys.stderr, 'exiting'
+        yield deferLater(reactor, 0.2, lambda: None)  # TODO fudge factor
+        
+        for channel in xrange(0, 3):
+            proxy._send_command('MC%03d;' % (channel,))
+            yield deferLater(reactor, 3, lambda: None)  # TODO fudge factor wait for device
+            print channel, proxy.state()['freq'].get()
     
     react(body)
 
