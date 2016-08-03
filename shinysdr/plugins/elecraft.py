@@ -21,6 +21,7 @@ Plugin for controlling Elecraft radios (K3, K3s, KX3, K2).
 
 from __future__ import absolute_import, division
 
+from collections import defaultdict
 import struct
 import sys
 
@@ -159,7 +160,12 @@ class _ElecraftRadio(ExportedState):
         self.__protocol.transport.loseConnection()
     
     def iq_center_cell(self):
+        """Made available for Device creation; not a well-thought-out interface."""
         return self.__iq_center_cell
+    
+    def get_direct_protocol(self):
+        """For experimental use only."""
+        return self.__protocol
     
     @exported_value(type=Notice(always_visible=False))
     def get_errors(self):
@@ -246,6 +252,8 @@ class _ElecraftClientProtocol(Protocol):
         self.__line_receiver.lineReceived = self.__lineReceived
         self.__proxy_obj = _ElecraftRadio(self)
         self.__communication_error = u'not_responding'
+        
+        self.__explicit_waits = defaultdict(list)
         
         # set up dummy initial state
         self.__scheduled_poll = reactor.callLater(0, lambda: None)
@@ -336,9 +344,21 @@ class _ElecraftClientProtocol(Protocol):
         """Send a raw command.
         
         The text must include its trailing semicolon.
+        
+        If wait=True, return a Deferred.
         """
         assert cmd_text == '' or cmd_text.endswith(';')
         self.transport.write(cmd_text)
+    
+    def get(self, name):
+        """TODO explain
+        
+        Note that this may wait too little time, if the same command is already in flight.
+        """
+        d = defer.Deferred()
+        self.__explicit_waits[name].append(d)
+        self.send_command(name + ';')
+        return d
     
     def __reinitialize(self):
         # TODO: Use ID, K3, and OM commands to confirm identity and customize
@@ -392,6 +412,7 @@ class _ElecraftClientProtocol(Protocol):
             try:
                 cmd = line[:2]
                 sub = len(line) > 2 and line[2] == '$'
+                cmd_sub = cmd + ('$' if sub else '')
                 data = line[(3 if sub else 2):]
                 if cmd == 'IF':
                     IF_STRUCT = struct.Struct('!11s 5x 5s s s 3x s s s s s s s 2x')
@@ -412,6 +433,11 @@ class _ElecraftClientProtocol(Protocol):
                         self._update(key + ('$' if sub else ''), coercer(data))
                 else:
                     log.msg('Elecraft client: unrecognized message %r' % (line,))
+                if cmd_sub in self.__explicit_waits:
+                    waits = self.__explicit_waits[cmd_sub]
+                    del self.__explicit_waits[cmd_sub]
+                    for d in waits:
+                        self.__reactor.callLater(0, d.callback, data)
             except ValueError as e:  # bad digits or whatever
                 log.err(e, 'Elecraft client: error while parsing message %r' % (line,))
                 self.__communication_error = 'bad_data'
