@@ -479,13 +479,20 @@ def frequency_editor_experiment_main():
         port, = sys.argv[1:]
         device = yield connect_to_rig(reactor, port)
         proxy = device.get_components_dict()['rig']
+        proto = proxy.get_direct_protocol()
+        yield deferLater(reactor, 0.2, lambda: None)  # TODO fudge factor wait for device
+        print >>sys.stderr, 'syncing'
+        _ = yield proto.get('ID')  # TODO explicit sync thing
         print >>sys.stderr, 'operating'
-        yield deferLater(reactor, 0.2, lambda: None)  # TODO fudge factor
         
         for channel in xrange(0, 3):
-            proxy._send_command('MC%03d;' % (channel,))
-            yield deferLater(reactor, 3, lambda: None)  # TODO fudge factor wait for device
-            print channel, proxy.state()['freq'].get()
+            proto.send_command('MC%03d;' % (channel,))
+            yield proto.get('MC')  # force another roundtrip
+            c = yield proto.get('MC')
+            assert int(c) == channel, (c, channel)
+            freqstr = yield proto.get('FA')
+            vfobstr = yield proto.get('DB')
+            print channel, freqstr, vfobstr
     
     react(body)
 
