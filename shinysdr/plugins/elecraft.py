@@ -489,14 +489,24 @@ def frequency_editor_experiment_main():
         
         proto.send_command('SWT33;')  # harmless tap of PBT triggering exit of RCL mode if we're in it.
         
-        for channel in xrange(0, 11):  # TODO read entire memory
+        for channel in xrange(0, 100):  # TODO read entire memory
             # Switch to intended memory channel.
             proto.send_command('MC%03d;' % (channel,))
             yield proto.get('MC')  # force another roundtrip to be sure (this is necessary)
+            after_change_str = yield proto.get('DB')
+            if after_change_str == 'NOT SET':
+                continue
             c = yield proto.get('MC')
-            assert int(c) == channel, (c, channel)
+            assert int(c) == channel, ('didn\'t set memory', c, channel)
             
-            # Read basic data.
+            # Read memory label and clear state. (Note that MC does not work while in RCL mode. TODO: Maybe we could use VFO UP/DN instead while continually in RCL mode?)
+            proto.send_command('SWH08;')  # RCL
+            vfobstr = yield proto.get('DB')
+            assert vfobstr[2] == '.'
+            label = vfobstr[3:]
+            proto.send_command('SWT33;')  # tap PBT to cancel RCL
+            
+            # Read basic data that does not require stateful interactions.
             # TODO: We can safely do these pipelined rather than serially.
             freq_a_str = yield proto.get('FA')
             freq_b_str = yield proto.get('FB')
@@ -528,20 +538,12 @@ def frequency_editor_experiment_main():
             #    tone = None
             tone = '<not impl>'
                 
-            # Read offset from menu
-            # TODO: Read ICons in order to get direction of offset
+            # Read RPT OFFSET from menu
+            # TODO: Read ICons in order to get direction of offset and presence at all
             proto.send_command('MN007;')
             offset_str = yield proto.get('MP')
             offset = int(offset_str) * 20  # TODO validate correct parsing
             proto.send_command('MN255;')  # exit menu
-            
-            # Read memory label. (Note that MC does not work while in RCL mode. TODO: Maybe we could use VFO UP/DN instead while continually in RCL mode?)
-            # TODO: Read VFOA text so as to determine if the memory is empty.
-            proto.send_command('SWH08;')  # RCL
-            vfobstr = yield proto.get('DB')
-            assert vfobstr[2] == '.'
-            label = vfobstr[3:]
-            proto.send_command('SWT33;')  # tap PBT to cancel RCL
             
             # Report
             print channel, label, freq_a, mode_a, data_mode, freq_b, mode_b, split, tone, offset
