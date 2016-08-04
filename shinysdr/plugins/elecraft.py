@@ -514,12 +514,18 @@ def frequency_editor_experiment_main():
             
             # Read PL tone
             #if mode_a == 'FM':
+            #    yield deferLater(reactor, 0.25, lambda: None)  # TODO fudge factor wait for device
             #    proto.send_command('SWH21;')  # tap PITCH twice, leaving the state the same but showing display
+            #    yield deferLater(reactor, 0.25, lambda: None)  # TODO fudge factor wait for device
             #    proto.send_command('SWH21;')
+            #    yield deferLater(reactor, 0.25, lambda: None)  # TODO fudge factor wait for device
             #    pitch_str = yield proto.get('DB')
-            #    assert pitch_str[0:3] == 'PL '
+            #    assert pitch_str[0:3] == 'PL ', pitch_str
             #    print '--- pl string:', pitch_str
             #    tone = pitch_str  # TODO parse
+            #    yield deferLater(reactor, 0.1, lambda: None)  # TODO fudge factor wait for device
+            #else:
+            #    tone = None
             tone = '<not impl>'
                 
             # Read offset from menu
