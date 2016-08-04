@@ -471,6 +471,7 @@ class _ElecraftClientProtocol(Protocol):
 
 
 def frequency_editor_experiment_main():
+    #from shinysdr import db
     from twisted.internet.task import deferLater, react
     
     @defer.inlineCallbacks
@@ -483,16 +484,66 @@ def frequency_editor_experiment_main():
         yield deferLater(reactor, 0.2, lambda: None)  # TODO fudge factor wait for device
         print >>sys.stderr, 'syncing'
         _ = yield proto.get('ID')  # TODO explicit sync thing
+        # TODO verify that we are talking to a KX3 and not something else
         print >>sys.stderr, 'operating'
         
-        for channel in xrange(0, 3):
+        proto.send_command('SWT33;')  # harmless tap of PBT triggering exit of RCL mode if we're in it.
+        
+        for channel in xrange(0, 11):  # TODO read entire memory
+            # Switch to intended memory channel.
             proto.send_command('MC%03d;' % (channel,))
-            yield proto.get('MC')  # force another roundtrip
+            yield proto.get('MC')  # force another roundtrip to be sure (this is necessary)
             c = yield proto.get('MC')
             assert int(c) == channel, (c, channel)
-            freqstr = yield proto.get('FA')
+            
+            # Read basic data.
+            # TODO: We can safely do these pipelined rather than serially.
+            freq_a_str = yield proto.get('FA')
+            freq_b_str = yield proto.get('FB')
+            mode_a_str = yield proto.get('MD')
+            mode_b_str = yield proto.get('MD$')
+            data_mode_str = yield proto.get('DT')
+            split_str = yield proto.get('FT')
+            
+            freq_a = int(freq_a_str)
+            freq_b = int(freq_b_str)
+            mode_a = _decode_mode(mode_a_str)
+            mode_b = _decode_mode(mode_b_str)
+            data_mode = int(data_mode_str)  # TODO decode
+            split = bool(int(split_str))
+            
+            # Read PL tone
+            #if mode_a == 'FM':
+            #    proto.send_command('SWH21;')  # tap PITCH twice, leaving the state the same but showing display
+            #    proto.send_command('SWH21;')
+            #    pitch_str = yield proto.get('DB')
+            #    assert pitch_str[0:3] == 'PL '
+            #    print '--- pl string:', pitch_str
+            #    tone = pitch_str  # TODO parse
+            tone = '<not impl>'
+                
+            # Read offset from menu
+            # TODO: Read ICons in order to get direction of offset
+            proto.send_command('MN007;')
+            offset_str = yield proto.get('MP')
+            offset = int(offset_str) * 20  # TODO validate correct parsing
+            proto.send_command('MN255;')  # exit menu
+            
+            # Read memory label. (Note that MC does not work while in RCL mode. TODO: Maybe we could use VFO UP/DN instead while continually in RCL mode?)
+            # TODO: Read VFOA text so as to determine if the memory is empty.
+            proto.send_command('SWH08;')  # RCL
             vfobstr = yield proto.get('DB')
-            print channel, freqstr, vfobstr
+            assert vfobstr[2] == '.'
+            label = vfobstr[3:]
+            proto.send_command('SWT33;')  # tap PBT to cancel RCL
+            
+            # Report
+            print channel, label, freq_a, mode_a, data_mode, freq_b, mode_b, split, tone, offset
+            
+            # TODO: Trigger RCL in a reliable way (check state?) to read memory name
+            # Memory fields that we need:
+            #   Number, Label, (not Description), VFO A, Mode A, Data Mode, VFO B, Split?, Mode B, Offset, PL Tone
+        yield proto.get('MC')  # wait till after commands have been transmitted before exiting
     
     react(body)
 
