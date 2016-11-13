@@ -167,7 +167,7 @@ class _ElecraftRadio(ExportedState):
         """For experimental use only."""
         return self.__protocol
     
-    @exported_value(type=Notice(always_visible=False))
+    @exported_value(type=Notice(always_visible=False), changes='placeholder_slow')
     def get_errors(self):
         error = self.__protocol.get_communication_error()
         if not error:
