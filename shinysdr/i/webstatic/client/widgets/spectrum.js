@@ -101,7 +101,6 @@ define(['./basic', './dbui', '../types', '../values', '../events', '../widget', 
       
       // TODO should logically be doing this -- need to support "widget with possibly multiple target elements"
       //addWidget(null, MonitorQuickOptions);
-      ignore('signal_type');
       ignore('frame_rate');
       ignore('freq_resolution');
       ignore('paused');
@@ -119,7 +118,6 @@ define(['./basic', './dbui', '../types', '../values', '../events', '../widget', 
   
   function MonitorQuickOptions(config) {
     Block.call(this, config, function (block, addWidget, ignore, setInsertion, setToDetails, getAppend) {
-      ignore('signal_type');
       ignore('fft');
       ignore('scope');
       addWidget('frame_rate', LogSlider, 'Rate');
@@ -168,7 +166,6 @@ define(['./basic', './dbui', '../types', '../values', '../events', '../widget', 
       ignore('fft');
       ignore('scope');
       ignore('time_length');
-      ignore('signal_type');
     });
   }
   exports.MonitorDetailedOptions = MonitorDetailedOptions;

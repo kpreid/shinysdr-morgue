@@ -281,15 +281,13 @@ define(['./basic', './spectrum', '../types', '../values', '../events', '../widge
       }());
       
       setToDetails();
-      
-      ignore('output_type');
     }, true);
   }
   exports['interface:shinysdr.devices.IRXDriver'] = RXDriverWidget;
   
   function TXDriverWidget(config) {
     Block.call(this, config, function (block, addWidget, ignore, setInsertion, setToDetails, getAppend) {
-      ignore('input_type');  // TODO this should be handled by server-defined metadata
+      // TODO: If this continues to be entirely empty once we have experience with TX drivers, eliminate this unnecessary widget declaration.
     }, true);
   }
   exports['interface:shinysdr.devices.ITXDriver'] = TXDriverWidget;
