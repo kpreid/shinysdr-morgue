@@ -149,10 +149,14 @@ define(['../types', '../values', '../events', '../widget', '../gltools', '../dat
         if (isSingleValued(member.type)) {
           continue;
         }
+        const sortKey = typeof(member.metadata.naming.sort_key) === 'string' ? member.metadata.naming.sort_key : key;
+        if (sortKey.startsWith('•')) {
+          continue;
+        }
         sortTable.push({
           key: key,
           cell: member,
-          sortKey: typeof(member.metadata.naming.sort_key) === 'string' ? member.metadata.naming.sort_key : key
+          sortKey: sortKey
         });
       } else {
         console.warn('Block scan got unexpected object:', member);
@@ -163,7 +167,10 @@ define(['../types', '../values', '../events', '../widget', '../gltools', '../dat
       return a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0;
     });
     
-    sortTable.forEach(function ({key, cell}) {
+    sortTable.forEach(function ({key, cell, sortKey}) {
+      if (sortKey.startsWith('~')) {
+        setToDetails();
+      }
       // TODO: gimmick to support local metadata-less cells; stop passing key once metadata usage is more established.
       let label = cell.metadata.naming.label ? undefined : key;
       addWidget(key, PickWidget, label);

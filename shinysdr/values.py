@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2013, 2014, 2015, 2016 Kevin Reid <kpreid@switchb.org>
 # 
 # This file is part of ShinySDR.
@@ -49,6 +50,9 @@ class CellMetadata(namedtuple('CellMetadata', [
     Whether the value of this cell will be considered as part of the persistent state of the containing object for use across server restarts and such.
     
     naming: an EnumRow giving the 'human-readable' name of the cell and related information.
+    The sort_key is given two special meanings for UI display:
+      If it begins with '~', the cell may be made less accessible by default.
+      If it begins with '•' (bullet), the cell will be hidden entirely.
     """
 
 
