@@ -491,7 +491,7 @@ class _AudioRXDriver(ExportedState, gr.hier_block2):
         self.connect(combine, self)
     
     # implement IRXDriver
-    @exported_value(type=SignalType, changes='never')
+    @exported_value(type=SignalType, changes='never', sort_key='•')
     def get_output_type(self):
         return self.__signal_type
 
@@ -545,7 +545,7 @@ class _AudioTXDriver(ExportedState, gr.hier_block2):
         self.connect(self, split, (sink, 0))
         self.connect((split, 1), (sink, 1))
 
-    @exported_value(type=SignalType, changes='never')
+    @exported_value(type=SignalType, changes='never', sort_key='•')
     def get_input_type(self):
         return self.__signal_type
 

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2013, 2014, 2015, 2016 Kevin Reid <kpreid@switchb.org>
 #
 # This file is part of ShinySDR.
@@ -148,7 +149,7 @@ class _SimulatedRXDriver(ExportedState, gr.hier_block2):
         return self.__transmitters_cs
 
     # implement IRXDriver
-    @exported_value(type=SignalType, changes='never')
+    @exported_value(type=SignalType, changes='never', sort_key='•')
     def get_output_type(self):
         return self.__signal_type
         

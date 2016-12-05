@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2013, 2014, 2015, 2016 Kevin Reid <kpreid@switchb.org>
 #
 # This file is part of ShinySDR.
@@ -316,7 +317,7 @@ class _OsmoSDRRXDriver(ExportedState, gr.hier_block2):
             sample_rate=sample_rate)
         self.__usable_bandwidth = tuning.calc_usable_bandwidth(sample_rate)
     
-    @exported_value(type=SignalType, changes='never')
+    @exported_value(type=SignalType, changes='never', sort_key='•')
     def get_output_type(self):
         return self.__signal_type
     
