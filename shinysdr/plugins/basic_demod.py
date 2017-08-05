@@ -28,11 +28,12 @@ from gnuradio import filter as grfilter  # don't shadow builtin
 from gnuradio.analog import fm_emph
 from gnuradio.filter import firdes
 
+from shinysdr.i.blocks import MonitorSink
 from shinysdr.interfaces import BandShape, ModeDef, IDemodulator, IModulator, ITunableDemodulator
 from shinysdr.math import dB, to_dB
 from shinysdr.filters import MultistageChannelFilter, make_resampler, design_sawtooth_filter
 from shinysdr.signals import SignalType
-from shinysdr.types import EnumT, EnumRow, RangeT
+from shinysdr.types import EnumT, EnumRow, RangeT, ReferenceT
 from shinysdr import units
 from shinysdr.values import ExportedState, exported_value, setter
 
@@ -567,7 +568,26 @@ class WFMDemodulator(FMDemodulator):
         self.__decode_stereo = value
         self.context.rebuild_me()
     
+    @exported_value(type=ReferenceT(), changes='never')
+    def get_monitor1(self):
+        return self.m1
+    
+    @exported_value(type=ReferenceT(), changes='never')
+    def get_monitor2(self):
+        return self.m2
+    
+    @exported_value(
+        type=RangeT([(-100, 0)], unit=units.dBFS, strict=False),
+        changes='continuous')
+    def get_probe1(self):
+        return to_dB(max(1e-10, self.probe1.level()))
+    
     def connect_audio_stage(self, input_port):
+        self.m1 = MonitorSink(signal_type=SignalType(sample_rate=self.demod_rate, kind='IQ'),
+            context=self.context)
+        self.m2 = MonitorSink(signal_type=SignalType(sample_rate=self.demod_rate, kind='IQ'),
+            context=self.context)
+        
         stereo_rate = self.demod_rate
         normalizer = TWO_PI / stereo_rate
         pilot_tone = 19000
@@ -604,9 +624,15 @@ class WFMDemodulator(FMDemodulator):
         mixL = blocks.add_ff(1)
         mixR = blocks.sub_ff(1)
         
+        self.probe1 = analog.probe_avg_mag_sqrd_f(0, alpha=0.5)
+        
         # connections
         self.connect(input_port, mono_channel_filter)
         if self.__decode_stereo:
+            self.connect(stereo_pilot_filter, self.m1)
+            self.connect(stereo_pilot_pll, self.m2)
+            self.connect(difference_channel_filter, self.probe1)
+            
             # stereo pilot tone tracker
             self.connect(
                 input_port,
