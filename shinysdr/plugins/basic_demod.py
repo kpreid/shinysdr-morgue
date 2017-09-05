@@ -608,8 +608,8 @@ class WFMDemodulator(FMDemodulator):
                     firdes.complex_band_pass(
                         1.0,
                         stereo_rate,
-                        18000,
-                        20000,
+                        pilot_low,
+                        pilot_high,
                         300)),
                 self.__delay,  # arbitrary fudged phase correction
                 pilot_tone_agc,
@@ -634,15 +634,17 @@ class WFMDemodulator(FMDemodulator):
             unmixer = blocks.multiply_matrix_ff(((1, diff_gain), (1, -diff_gain)))
             self.connect(
                 stereo_sum_out,
-                fm_emph.fm_deemph(stereo_rate, tau),
                 (unmixer, 0))
             self.connect(
                 stereo_diff_out,
-                fm_emph.fm_deemph(stereo_rate, tau),
                 (unmixer, 1))
             resamplerL = self._make_resampler((unmixer, 0), self.__audio_int_rate)
             resamplerR = self._make_resampler((unmixer, 1), self.__audio_int_rate)
-            self.connect_audio_output(resamplerL, resamplerR)
+            deemphL = fm_emph.fm_deemph(self.__audio_int_rate, tau)
+            deemphR = fm_emph.fm_deemph(self.__audio_int_rate, tau)
+            self.connect(resamplerL, deemphL)
+            self.connect(resamplerR, deemphR)
+            self.connect_audio_output(deemphL, deemphR)
         else:
             resampler = self._make_resampler(mono_channel_filter, self.__audio_int_rate)
             self.connect_audio_output(resampler, resampler)
