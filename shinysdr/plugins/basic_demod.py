@@ -599,7 +599,7 @@ class WFMDemodulator(FMDemodulator):
         if self.__decode_stereo:
             # pilot tone extraction and conditioning
             stereo_diff_downconverter = blocks.multiply_cc()
-            pilot_tone_agc = analog.agc2_cc(reference=1.0)
+            pilot_tone_agc = analog.agc2_cc(attack_rate=1e-3, decay_rate=1e-3, reference=1.0)
             pilot_tone_agc.set_max_gain(dB(20))
             self.connect(
                 input_port,
