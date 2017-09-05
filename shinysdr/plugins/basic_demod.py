@@ -546,12 +546,15 @@ class WFMDemodulator(FMDemodulator):
         self.__decode_stereo = decode_stereo
         self.__audio_int_rate = 40000  # lower than demod rate, higher than audio filter
         
+        self.__delay = blocks.delay(itemsize=gr.sizeof_gr_complex, delay=2)
+        
         FMDemodulator.__init__(self,
             stereo=True,  # config for stereo because we can't change at runtime
             audio_rate=self.__audio_int_rate,
             demod_rate=200000,  # higher than deviation*2, higher than stereo pilot freq, multiple of __audio_int_rate
             deviation=75000,
             band_filter=80000,
+            tau=None,  # apply deemphasis later
             band_filter_transition=20000,
             no_audio_filter=True,  # disable highpass
             **kwargs)
@@ -568,31 +571,34 @@ class WFMDemodulator(FMDemodulator):
         self.__decode_stereo = value
         self.context.rebuild_me()
     
-    @exported_value(type=ReferenceT(), changes='never')
-    def get_monitor1(self):
-        return self.m1
+    @exported_value(type=RangeT([(0, 20)], integer=True), changes='this_setter')
+    def get_delay(self):
+        return self.__delay.dly()
     
-    @exported_value(type=ReferenceT(), changes='never')
-    def get_monitor2(self):
-        return self.m2
+    @setter
+    def set_delay(self, value):
+        self.__delay.set_dly(int(value))
     
-    @exported_value(
-        type=RangeT([(-100, 0)], unit=units.dBFS, strict=False),
-        changes='continuous')
-    def get_probe1(self):
-        return to_dB(max(1e-10, self.probe1.level()))
+    #@exported_value(type=ReferenceT(), changes='never')
+    #def get_monitor1(self):
+    #    return self.m1
+    #
+    #@exported_value(type=ReferenceT(), changes='never')
+    #def get_monitor2(self):
+    #    return self.m2
+    #
+    #@exported_value(
+    #    type=RangeT([(-100, 0)], unit=units.dBFS, strict=False),
+    #    changes='continuous')
+    #def get_probe1(self):
+    #    return to_dB(max(1e-10, self.probe1.level()))
     
     def connect_audio_stage(self, input_port):
-        self.m1 = MonitorSink(signal_type=SignalType(sample_rate=self.demod_rate, kind='IQ'),
-            context=self.context)
-        self.m2 = MonitorSink(signal_type=SignalType(sample_rate=self.demod_rate, kind='IQ'),
-            context=self.context)
-        
         stereo_rate = self.demod_rate
-        normalizer = TWO_PI / stereo_rate
         pilot_tone = 19000
         pilot_low = pilot_tone * 0.98
         pilot_high = pilot_tone * 1.02
+        diff_gain = 2.13  # fudge factor for fractional-sample difference channel phase error
 
         def make_audio_filter():
             return grfilter.fir_filter_fff(
@@ -603,60 +609,53 @@ class WFMDemodulator(FMDemodulator):
                     15000,
                     5000,
                     firdes.WIN_HAMMING))
-
-        stereo_pilot_filter = grfilter.fir_filter_fcc(
-            1,  # decimation
-            firdes.complex_band_pass(
-                1.0,
-                stereo_rate,
-                pilot_low,
-                pilot_high,
-                300))  # TODO magic number from gqrx
-        stereo_pilot_pll = analog.pll_refout_cc(
-            loop_bw=0.001,
-            max_freq=normalizer * pilot_high,
-            min_freq=normalizer * pilot_low)
-        stereo_pilot_doubler = blocks.multiply_cc()
-        stereo_pilot_out = blocks.complex_to_real()
-        difference_channel_mixer = blocks.multiply_ff()
-        difference_channel_filter = make_audio_filter()
-        mono_channel_filter = make_audio_filter()
-        mixL = blocks.add_ff(1)
-        mixR = blocks.sub_ff(1)
         
-        self.probe1 = analog.probe_avg_mag_sqrd_f(0, alpha=0.5)
-        
-        # connections
-        self.connect(input_port, mono_channel_filter)
         if self.__decode_stereo:
-            self.connect(stereo_pilot_filter, self.m1)
-            self.connect(stereo_pilot_pll, self.m2)
-            self.connect(difference_channel_filter, self.probe1)
-            
-            # stereo pilot tone tracker
+            # pilot tone extraction and conditioning
+            stereo_diff_downconverter = blocks.multiply_cc()
+            pilot_tone_agc = analog.agc2_cc(reference=1.0)
+            pilot_tone_agc.set_max_gain(dB(20))
             self.connect(
                 input_port,
-                stereo_pilot_filter,
-                stereo_pilot_pll)
-            self.connect(stereo_pilot_pll, (stereo_pilot_doubler, 0))
-            self.connect(stereo_pilot_pll, (stereo_pilot_doubler, 1))
-            self.connect(stereo_pilot_doubler, stereo_pilot_out)
-        
-            # pick out stereo left-right difference channel (at stereo_rate)
-            self.connect(input_port, (difference_channel_mixer, 0))
-            self.connect(stereo_pilot_out, (difference_channel_mixer, 1))
+                grfilter.fir_filter_fcc(  # stereo pilot tone filter
+                    1,
+                    firdes.complex_band_pass(
+                        1.0,
+                        stereo_rate,
+                        18000,
+                        20000,
+                        300)),
+                self.__delay,  # arbitrary fudged phase correction
+                pilot_tone_agc,
+                blocks.exponentiate_const_cci(2),  # frequency doubler
+                (stereo_diff_downconverter, 1))
+            
+            # downconversion path for difference channel
+            stereo_diff_out = make_audio_filter()
             self.connect(
-                difference_channel_mixer,
-                blocks.multiply_const_ff(50),  # TODO: Completely empirical fudge factor. This should not be necessary. We're losing signal somewhere?
-                difference_channel_filter)
-        
-            # recover left/right channels (at self.__audio_int_rate)
-            self.connect(difference_channel_filter, (mixL, 1))
-            self.connect(difference_channel_filter, (mixR, 1))
-            resamplerL = self._make_resampler((mixL, 0), self.__audio_int_rate)
-            resamplerR = self._make_resampler((mixR, 0), self.__audio_int_rate)
-            self.connect(mono_channel_filter, (mixL, 0))
-            self.connect(mono_channel_filter, (mixR, 0))
+                input_port,
+                blocks.float_to_complex(),
+                stereo_diff_downconverter,
+                blocks.complex_to_float(),
+                stereo_diff_out)
+            
+            # sum channel
+            stereo_sum_out = make_audio_filter()
+            self.connect(input_port, stereo_sum_out)
+            
+            # unmixing and deemphasis
+            tau = 75e-6
+            unmixer = blocks.multiply_matrix_ff(((1, diff_gain), (1, -diff_gain)))
+            self.connect(
+                stereo_sum_out,
+                fm_emph.fm_deemph(stereo_rate, tau),
+                (unmixer, 0))
+            self.connect(
+                stereo_diff_out,
+                fm_emph.fm_deemph(stereo_rate, tau),
+                (unmixer, 1))
+            resamplerL = self._make_resampler((unmixer, 0), self.__audio_int_rate)
+            resamplerR = self._make_resampler((unmixer, 1), self.__audio_int_rate)
             self.connect_audio_output(resamplerL, resamplerR)
         else:
             resampler = self._make_resampler(mono_channel_filter, self.__audio_int_rate)
