@@ -579,20 +579,6 @@ class WFMDemodulator(FMDemodulator):
     def set_delay(self, value):
         self.__delay.set_dly(int(value))
     
-    #@exported_value(type=ReferenceT(), changes='never')
-    #def get_monitor1(self):
-    #    return self.m1
-    #
-    #@exported_value(type=ReferenceT(), changes='never')
-    #def get_monitor2(self):
-    #    return self.m2
-    #
-    #@exported_value(
-    #    type=RangeT([(-100, 0)], unit=units.dBFS, strict=False),
-    #    changes='continuous')
-    #def get_probe1(self):
-    #    return to_dB(max(1e-10, self.probe1.level()))
-    
     def connect_audio_stage(self, input_port):
         stereo_rate = self.demod_rate
         pilot_tone = 19000
