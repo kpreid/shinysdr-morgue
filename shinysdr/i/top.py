@@ -26,6 +26,7 @@ from twisted.internet import reactor
 from twisted.logger import Logger
 from zope.interface import implementer  # available via Twisted
 
+from gnuradio import analog
 from gnuradio import blocks
 from gnuradio import gr
 
@@ -239,7 +240,7 @@ class Top(gr.top_block, ExportedState, RecursiveLockBlockMixin):
             monitor_signal_type = self.__monitor_rx_driver.get_output_type()
             self.monitor.set_signal_type(monitor_signal_type)
             self.monitor.set_input_center_freq(this_source.get_freq())
-            self.__clip_probe.set_window_and_reconnect(0.5 * monitor_signal_type.get_sample_rate())
+            self.__clip_probe.set_sample_rate(monitor_signal_type.get_sample_rate())
         
         if self.__needs_reconnect:
             self.__log.info(u'Flow graph: Rebuilding connections because: {reasons}',
@@ -522,58 +523,44 @@ def _find_in_usable_bandwidth(usable_bandwidth_range, receiver):
 
 class MaxProbe(gr.hier_block2, ExportedState):
     """
-    A probe whose level is the maximum magnitude-squared occurring within the specified window of samples.
+    A probe whose level tracks the peak magnitude of the input signal.
     
     Also provides a cell with a message assuming magnitudes over 1.0 are too high.
     """
     
-    __ABSURD_MAGNITUDE_SQUARED = 2.01
+    __ABSURD_MAGNITUDE = math.sqrt(2) + 0.01
     
-    def __init__(self, window=10000):
+    def __init__(self):
         gr.hier_block2.__init__(
             self, type(self).__name__,
             gr.io_signature(1, 1, gr.sizeof_gr_complex),
             gr.io_signature(0, 0, 0))
         self.__sink = None  # quiet pylint
         self.__absurd = False
-        self.set_window_and_reconnect(window)
+        self.__agc3 = analog.agc3_cc(
+            attack_rate=1,
+            decay_rate=0,
+            reference=1.0)
+        self.connect(self, self.__agc3, blocks.null_sink(gr.sizeof_gr_complex))
     
     def level(self):
-        # pylint: disable=method-hidden, no-self-use
-        # overridden in instances
-        raise Exception('This placeholder should never get called')
+        return 1 / self.__agc3.gain()
     
-    def set_window_and_reconnect(self, window):
-        """
-        Must be called while the flowgraph is locked already.
-        """
-        
-        self.__absurd = False
-        
-        # Use a power-of-2 window size to satisfy gnuradio allocation alignment without going overboard.
-        window = int(2 ** math.floor(math.log(window, 2)))
-        self.disconnect_all()
-        self.__sink = blocks.probe_signal_f()
-        self.connect(
-            self,
-            blocks.complex_to_mag_squared(),
-            blocks.stream_to_vector(itemsize=gr.sizeof_float, nitems_per_block=window),
-            blocks.max_ff(window),
-            self.__sink)
-        
-        # shortcut method implementation
-        self.level = self.__sink.level
+    def set_sample_rate(self, sample_rate):
+        # TODO
+        pass
     
     @exported_value(type=NoticeT(always_visible=False), changes='continuous')
     def get_clip_warning(self):
+        return unicode(self.level())
         if not self.__absurd:
-            magnitude_squared = self.level()
+            magnitude = self.level()
             # We assume that our input's absolute limits on I and Q values are the range -1.0 to 1.0. This is a square region; therefore the magnitude observed can be up to sqrt(2) = 1.414 above this, allowing us some opportunity to measure the amount of excess, and also to detect clipping even if the device doesn't produce exactly +-1.0 values.
-            if magnitude_squared >= self.__ABSURD_MAGNITUDE_SQUARED:
+            if magnitude >= self.__ABSURD_MAGNITUDE:
                 # Oops, our assumption of 1.0 being the limit was wrong. Disable warning.
                 self.__absurd = True
-            elif magnitude_squared >= 1.0:
-                return u'Input amplitude too high (%.2f \u2265 1.0). Reduce gain.' % math.sqrt(magnitude_squared)
+            elif magnitude >= 1.0:
+                return u'Input amplitude too high (%.2f \u2265 1.0). Reduce gain.' % magnitude
         return u''
 
 
